@@ -135,5 +135,8 @@ def update_graph(data_date, data_line, data_workcell):
     return fig, df_test.to_dict('records')
 
 if __name__ == '__main__':
-    # app.run_server(debug=True)
-    app.run_server(host='0.0.0.0', port=8050, debug=True)
+    app.run_server(debug=True)
+    # for Heroku
+    # app.run_server(host='0.0.0.0', port=8050, debug=True)
+    # for CentOS
+    # app.run_server(host='0.0.0.0', debug=True, port=80)
