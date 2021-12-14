@@ -11,6 +11,7 @@ from dash import dash_table, dcc, html
 from dash.dependencies import Input, Output
 
 app = dash.Dash(__name__)
+server = app.server
 
 colors = {
     'background': '#111111',
