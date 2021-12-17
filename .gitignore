@@ -1,3 +1,5 @@
 dashapp
 dashapp/*
 .vscode
+__pycache__/
+venv/
