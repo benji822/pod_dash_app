@@ -2,6 +2,7 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 import os
+import re
 from glob import glob
 
 import dash
@@ -20,21 +21,25 @@ colors = {
 
 # assume you have a "long-form" data frame
 # see https://plotly.com/python/px-arguments/ for more options
-files_name = [y for x in os.walk('./data') for y in glob(os.path.join(x[0], '*.xlsx'))]
-lines_name = [ f[20:22] for f in files_name]
+output_files_name = [y for x in os.walk('./data/output') for y in glob(os.path.join(x[0], '*.xlsx'))]
+downtime_files_name = [y for x in os.walk('./data/downtime') for y in glob(os.path.join(x[0], '*.xlsx'))]
+
+output_lines_name = [re.search('L.{1}', name).group(0) for name in output_files_name]
+downtime_lines_name = [re.search('L.{1}', name).group(0) for name in downtime_files_name]
+
 df_arr = {}
-for x in files_name:
+for x in output_files_name:
     arr = []
     for y in range(10):
         arr.append(pd.read_excel(x, sheet_name=y, parse_dates=["Createtime"], index_col="Createtime"))
-    line_name = x[20:22]
+    line_name = re.search('L.{1}', x).group(0)
     df_arr[line_name] = arr
 
-date_arr = list(set([x.date() for x in df_arr[lines_name[0]][0].index]))
+date_arr = list(set([x.date() for x in df_arr[output_lines_name[0]][0].index]))
 date_arr.sort()
 date_str_arr = [d.strftime("%m/%d/%Y")  for d in date_arr]
 
-fig = px.bar(df_arr[lines_name[0]][0].loc[date_str_arr[0]], y="HourlyOutput", text='HourlyOutput')
+fig = px.bar(df_arr[output_lines_name[0]][0].loc[date_str_arr[0]], y="HourlyOutput", text='HourlyOutput')
 
 # fig.update_layout(
 #     plot_bgcolor=colors['background'],
@@ -42,7 +47,7 @@ fig = px.bar(df_arr[lines_name[0]][0].loc[date_str_arr[0]], y="HourlyOutput", te
 #     font_color=colors['text']
 # )
 
-df_test = df_arr[lines_name[0]][0].loc[date_str_arr[0]].copy()
+df_test = df_arr[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
 df_test.reset_index(inplace=True)
 df_test = df_test.rename(columns = {'index':'new column name'})
 
@@ -74,8 +79,8 @@ app.layout = html.Div(children=[
                     html.Label('Line Number'),
                     dcc.Dropdown(
                         id="data_line",
-                        options=[{"label": i, "value": i} for i in lines_name],
-                        value=lines_name[0],
+                        options=[{"label": i, "value": i} for i in output_lines_name],
+                        value=output_lines_name[0],
                         style={"marginTop": '10px'}
                     )
                 ],
