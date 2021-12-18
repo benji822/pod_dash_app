@@ -98,8 +98,7 @@ output_fig = px.bar(default_output_df, y="HourlyOutput", text='HourlyOutput')
 # )
 
 downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
-downtime_fig = px.bar(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
-downtime_fig.update_layout(yaxis_range=[0,60])
+downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
 
 output_data_table_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
 output_data_table_df.reset_index(inplace=True)
@@ -243,10 +242,9 @@ def update_output_graph(data_date, data_line, data_workcell):
     downtime_data_table_df.reset_index(inplace=True)
     downtime_data_table_df = downtime_data_table_df.rename(columns = {'index':'new column name'})
 
-    # Update Hourly downtime bar chart
+    # Update Hourly downtime line chart
     default_hourly_downtime_df = downtime_date_dict[data_line][data_date]["hourly_downtime"][downtime_date_dict[data_line][data_date]["hourly_downtime"]['WORKCELL'] == (data_workcell + 1)]
-    downtime_fig = px.bar(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
-    downtime_fig.update_layout(yaxis_range=[0,60])
+    downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
 
     return output_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records'), downtime_fig
 
