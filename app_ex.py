@@ -6,6 +6,7 @@ import re
 from glob import glob
 
 import dash
+import numpy as np
 import pandas as pd
 import plotly.express as px
 from dash import dash_table, dcc, html
@@ -27,29 +28,89 @@ downtime_files_name = [y for x in os.walk('./data/downtime') for y in glob(os.pa
 output_lines_name = [re.search('L.{1}', name).group(0) for name in output_files_name]
 downtime_lines_name = [re.search('L.{1}', name).group(0) for name in downtime_files_name]
 
-df_arr = {}
+# Get output data from excel file
+output_df = {}
 for x in output_files_name:
     arr = []
     for y in range(10):
         arr.append(pd.read_excel(x, sheet_name=y, parse_dates=["Createtime"], index_col="Createtime"))
     line_name = re.search('L.{1}', x).group(0)
-    df_arr[line_name] = arr
+    output_df[line_name] = arr
 
-date_arr = list(set([x.date() for x in df_arr[output_lines_name[0]][0].index]))
+
+# Get downtime data from excel file
+downtime_df = {}
+for x in downtime_files_name:
+    xl = pd.ExcelFile(x)
+    res = len(xl.sheet_names)
+    arr = []
+    for y in range(res):
+        arr.append(pd.read_excel(x, sheet_name=y))
+    downtime_line_name = re.search('L.{1}', x).group(0)
+    downtime_df[downtime_line_name] = arr
+
+
+# Format the downtime data for plot
+downtime_date_dict = {}
+for l in downtime_lines_name:
+    temp = {}
+    downtime_df_copy = downtime_df[l].copy()
+    line_date_arr = [x.loc[0]["Createtime"] for x in downtime_df_copy[::3]]
+    for d in line_date_arr:
+        sub_temp = {}
+        for v in range(3):
+            temp_df = downtime_df_copy.pop(0)
+            temp_df = temp_df.fillna(0)
+            if 'Createtime' in temp_df.keys():
+                temp_df.set_index('Createtime', inplace=True)
+                temp_df["Total_minutes"] = np.round(temp_df["Total_seconds"] /60, 0)
+                sub_temp["hourly_downtime"] = temp_df
+                
+            elif 'WORKCELL_STATUS' in temp_df.keys():
+                temp_df.set_index('WORKCELL_STATUS', inplace=True)
+                sub_temp["downtime_breakdown"] = temp_df
+
+            else:
+                sub_temp["downtime"] = temp_df
+        temp[d.strftime("%m/%d/%Y")] = sub_temp
+    downtime_date_dict[l] = temp
+
+
+date_arr = list(set([x.date() for x in output_df[output_lines_name[0]][0].index]))
 date_arr.sort()
 date_str_arr = [d.strftime("%m/%d/%Y")  for d in date_arr]
 
-fig = px.bar(df_arr[output_lines_name[0]][0].loc[date_str_arr[0]], y="HourlyOutput", text='HourlyOutput')
+default_output_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]]
+default_downtime_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]['downtime']
+default_downtime_breakdown_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]['downtime_breakdown']['wc1']
+default_hourly_downtime_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]["hourly_downtime"][downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]["hourly_downtime"]['WORKCELL'] == 1]
+##########################
+default_breakdown_pie_df = pd.DataFrame(default_downtime_breakdown_df)
+default_breakdown_pie_df['wc1'] = pd.to_timedelta(default_breakdown_pie_df["wc1"])
+default_breakdown_pie_df["total_seconds"] = default_breakdown_pie_df["wc1"].dt.total_seconds()
 
-# fig.update_layout(
+output_fig = px.bar(default_output_df, y="HourlyOutput", text='HourlyOutput')
+
+# output_fig.update_layout(
 #     plot_bgcolor=colors['background'],
 #     paper_bgcolor=colors['background'],
 #     font_color=colors['text']
 # )
 
-df_test = df_arr[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
-df_test.reset_index(inplace=True)
-df_test = df_test.rename(columns = {'index':'new column name'})
+downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
+downtime_fig = px.bar(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
+downtime_fig.update_layout(yaxis_range=[0,60])
+
+output_data_table_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
+output_data_table_df.reset_index(inplace=True)
+output_data_table_df = output_data_table_df.rename(columns = {'index':'new column name'})
+
+downtime_data_table_df = default_breakdown_pie_df.copy()
+downtime_data_table_df = default_breakdown_pie_df.rename({'wc1': 'total_time'}, axis=1)
+downtime_data_table_df['total_time'] = downtime_data_table_df['total_time'].astype(str)
+downtime_data_table_df.reset_index(inplace=True)
+downtime_data_table_df = downtime_data_table_df.rename(columns = {'index':'new column name'})
+
 
 app.layout = html.Div(children=[
     html.H1(
@@ -105,7 +166,7 @@ app.layout = html.Div(children=[
 
     dcc.Graph(
         id='hourly_output',
-        figure=fig
+        figure=output_fig
     ),
 
     html.H2(
@@ -117,31 +178,78 @@ app.layout = html.Div(children=[
 
     dash_table.DataTable(
         id='data_table',
-        columns=[{"name": i, "id": i} for i in df_test.columns],
-        data=df_test.to_dict('records'),
-    )
+        columns=[{"name": i, "id": i} for i in output_data_table_df.columns],
+        data=output_data_table_df.to_dict('records'),
+    ),
+
+    html.H2(
+        children='Downtime',
+        style={
+        'textAlign': 'center',
+        'color': colors['text']
+    }),
+    
+    dash_table.DataTable(
+        id='downtime_table',
+        columns=[{"name": i, "id": i} for i in downtime_data_table_df.columns],
+        data=downtime_data_table_df.to_dict('records'),
+    ),
+
+    dcc.Graph(
+        id='downtime_breakdown',
+        figure=downtime_fig_pie
+    ),
+
+    dcc.Graph(
+        id='hourly_downtime',
+        figure=downtime_fig
+    ),
 
 ])
 
 @app.callback(
     Output(component_id='hourly_output', component_property='figure'),
     Output(component_id='data_table', component_property='data'),
+    Output(component_id='downtime_breakdown', component_property='figure'),
+    Output(component_id='downtime_table', component_property='data'),
+    Output(component_id='hourly_downtime', component_property='figure'),
     Input(component_id='data_date', component_property='value'),
     Input(component_id='data_line', component_property='value'),
     Input(component_id='data_workcell', component_property='value')
 )
-def update_graph(data_date, data_line, data_workcell):
+def update_output_graph(data_date, data_line, data_workcell):
     print(data_date, data_line, data_workcell)
-    fig = px.bar(df_arr[data_line][data_workcell].loc[data_date], y="HourlyOutput", text='HourlyOutput')
-    df_test = df_arr[data_line][data_workcell].loc[data_date].copy()
-    df_test.reset_index(inplace=True)
-    df_test = df_test.rename(columns = {'index':'new column name'})
 
-    return fig, df_test.to_dict('records')
+    # Update Hourly output bar chart
+    output_fig = px.bar(output_df[data_line][data_workcell].loc[data_date], y="HourlyOutput", text='HourlyOutput')
+    
+
+    # Update output data table
+    output_data_table_df = output_df[data_line][data_workcell].loc[data_date].copy()
+    output_data_table_df.reset_index(inplace=True)
+    output_data_table_df = output_data_table_df.rename(columns = {'index':'new column name'})
+
+    # Upddate pie chart
+    default_downtime_breakdown_df = downtime_date_dict[data_line][data_date]['downtime_breakdown'][f'wc{data_workcell + 1}']
+    default_breakdown_pie_df = pd.DataFrame(default_downtime_breakdown_df)
+    default_breakdown_pie_df[f'wc{data_workcell + 1}'] = pd.to_timedelta(default_breakdown_pie_df[f'wc{data_workcell + 1}'])
+    default_breakdown_pie_df["total_seconds"] = np.round(default_breakdown_pie_df[f'wc{data_workcell + 1}'].dt.total_seconds(), 0)
+    downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
+
+    # Update downtime breakdown table
+    downtime_data_table_df = default_breakdown_pie_df.copy()
+    downtime_data_table_df = default_breakdown_pie_df.rename({f'wc{data_workcell + 1}': 'total_time'}, axis=1)
+    downtime_data_table_df['total_time'] = downtime_data_table_df['total_time'].astype(str)
+    downtime_data_table_df.reset_index(inplace=True)
+    downtime_data_table_df = downtime_data_table_df.rename(columns = {'index':'new column name'})
+
+    # Update Hourly downtime bar chart
+    default_hourly_downtime_df = downtime_date_dict[data_line][data_date]["hourly_downtime"][downtime_date_dict[data_line][data_date]["hourly_downtime"]['WORKCELL'] == (data_workcell + 1)]
+    downtime_fig = px.bar(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes', text='Total_minutes')
+    downtime_fig.update_layout(yaxis_range=[0,60])
+
+    return output_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records'), downtime_fig
 
 if __name__ == '__main__':
     app.run_server(debug=True)
-    # for Heroku
-    # app.run_server(host='0.0.0.0', port=8050, debug=True)
-    # for CentOS
-    # app.run_server(host='0.0.0.0', debug=True, port=80)
+    # app.run_server(host='0.0.0.0', debug=True, port='80')
