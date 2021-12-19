@@ -9,8 +9,10 @@ import dash
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from dash import dash_table, dcc, html
 from dash.dependencies import Input, Output
+from plotly.subplots import make_subplots
 
 app = dash.Dash(__name__)
 server = app.server
@@ -80,25 +82,22 @@ date_arr = list(set([x.date() for x in output_df[output_lines_name[0]][0].index]
 date_arr.sort()
 date_str_arr = [d.strftime("%m/%d/%Y")  for d in date_arr]
 
+
+# Setup default data for figure
 default_output_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]]
 default_downtime_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]['downtime']
 default_downtime_breakdown_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]['downtime_breakdown']['wc1']
 default_hourly_downtime_df = downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]["hourly_downtime"][downtime_date_dict[downtime_lines_name[0]][date_str_arr[0]]["hourly_downtime"]['WORKCELL'] == 1]
-##########################
 default_breakdown_pie_df = pd.DataFrame(default_downtime_breakdown_df)
 default_breakdown_pie_df['wc1'] = pd.to_timedelta(default_breakdown_pie_df["wc1"])
 default_breakdown_pie_df["total_seconds"] = default_breakdown_pie_df["wc1"].dt.total_seconds()
 
-output_fig = px.bar(default_output_df, y="HourlyOutput", text='HourlyOutput')
 
-# output_fig.update_layout(
-#     plot_bgcolor=colors['background'],
-#     paper_bgcolor=colors['background'],
-#     font_color=colors['text']
-# )
-
+# Create figure for the data
+# output_fig = px.bar(default_output_df, y="HourlyOutput", text='HourlyOutput')
+# downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
 downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
-downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
+
 
 output_data_table_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
 output_data_table_df.reset_index(inplace=True)
@@ -111,9 +110,35 @@ downtime_data_table_df.reset_index(inplace=True)
 downtime_data_table_df = downtime_data_table_df.rename(columns = {'index':'new column name'})
 
 
+# Create figure with output and downtime
+mul_fig = make_subplots(specs=[[{"secondary_y": True}]])
+# Add traces
+mul_fig.add_trace(
+    go.Bar(x=default_output_df.index, y=default_output_df["HourlyOutput"], name="Hourly output"),
+    secondary_y=False,
+)
+
+mul_fig.add_trace(
+    go.Scatter(x=default_hourly_downtime_df.index, y=default_hourly_downtime_df['Total_minutes'], name="Downtime in minutes"),
+    secondary_y=True,
+)
+
+# Add mul_figure title
+mul_fig.update_layout(
+    title_text="Hourly output and downtime in minutes"
+)
+
+# Set x-axis title
+mul_fig.update_xaxes(title_text="Createtime")
+
+# Set y-axes titles
+mul_fig.update_yaxes(title_text="<b>Output</b>", secondary_y=False)
+mul_fig.update_yaxes(title_text="<b>Downtime</b> in minutes", secondary_y=True)
+
+
 app.layout = html.Div(children=[
     html.H1(
-        children='POD Hourly Output',
+        children='POD Automation Line Data Analysis',
         style={
         'textAlign': 'center',
         'color': colors['text']
@@ -163,10 +188,7 @@ app.layout = html.Div(children=[
         style={'display': 'flex', 'justifyContent': 'space-between'}
     ),
 
-    dcc.Graph(
-        id='hourly_output',
-        figure=output_fig
-    ),
+    dcc.Graph(id="output_downtime_graph", figure=mul_fig),
 
     html.H2(
         children='Table Details',
@@ -199,19 +221,13 @@ app.layout = html.Div(children=[
         figure=downtime_fig_pie
     ),
 
-    dcc.Graph(
-        id='hourly_downtime',
-        figure=downtime_fig
-    ),
-
 ])
 
 @app.callback(
-    Output(component_id='hourly_output', component_property='figure'),
+    Output(component_id='output_downtime_graph', component_property='figure'),
     Output(component_id='data_table', component_property='data'),
     Output(component_id='downtime_breakdown', component_property='figure'),
     Output(component_id='downtime_table', component_property='data'),
-    Output(component_id='hourly_downtime', component_property='figure'),
     Input(component_id='data_date', component_property='value'),
     Input(component_id='data_line', component_property='value'),
     Input(component_id='data_workcell', component_property='value')
@@ -220,9 +236,8 @@ def update_output_graph(data_date, data_line, data_workcell):
     print(data_date, data_line, data_workcell)
 
     # Update Hourly output bar chart
-    output_fig = px.bar(output_df[data_line][data_workcell].loc[data_date], y="HourlyOutput", text='HourlyOutput')
+    # output_fig = px.bar(output_df[data_line][data_workcell].loc[data_date], y="HourlyOutput", text='HourlyOutput')
     
-
     # Update output data table
     output_data_table_df = output_df[data_line][data_workcell].loc[data_date].copy()
     output_data_table_df.reset_index(inplace=True)
@@ -244,9 +259,35 @@ def update_output_graph(data_date, data_line, data_workcell):
 
     # Update Hourly downtime line chart
     default_hourly_downtime_df = downtime_date_dict[data_line][data_date]["hourly_downtime"][downtime_date_dict[data_line][data_date]["hourly_downtime"]['WORKCELL'] == (data_workcell + 1)]
-    downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
+    # downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
 
-    return output_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records'), downtime_fig
+    # Update Hourly output downtime figure
+    mul_fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # Add traces
+    mul_fig.add_trace(
+        go.Bar(x=output_df[data_line][data_workcell].loc[data_date].index, y=output_df[data_line][data_workcell].loc[data_date]["HourlyOutput"], name="Hourly output"),
+        secondary_y=False,
+    )
+
+    mul_fig.add_trace(
+        go.Scatter(x=default_hourly_downtime_df.index, y=default_hourly_downtime_df['Total_minutes'], name="Downtime in minutes"),
+        secondary_y=True,
+    )
+
+    # Add mul_figure title
+    mul_fig.update_layout(
+        title_text="Hourly output and downtime in minutes"
+    )
+
+    # Set x-axis title
+    mul_fig.update_xaxes(title_text="Createtime")
+
+    # Set y-axes titles
+    mul_fig.update_yaxes(title_text="<b>Output</b>", secondary_y=False)
+    mul_fig.update_yaxes(title_text="<b>Downtime</b> in minutes", secondary_y=True)
+
+
+    return mul_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records')
 
 if __name__ == '__main__':
     app.run_server(debug=True)
