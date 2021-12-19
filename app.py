@@ -265,7 +265,7 @@ def update_output_graph(data_date, data_line, data_workcell):
     mul_fig = make_subplots(specs=[[{"secondary_y": True}]])
     # Add traces
     mul_fig.add_trace(
-        go.Bar(x=output_df[data_line][data_workcell].loc[data_date].index, y=output_df[data_line][data_workcell].loc[data_date]["HourlyOutput"], name="Hourly output"),
+        go.Bar(x=output_df[data_line][data_workcell].loc[data_date].index, y=output_df[data_line][data_workcell].loc[data_date]["HourlyOutput"], name="Hourly output", text=output_df[data_line][data_workcell].loc[data_date]["HourlyOutput"]),
         secondary_y=False,
     )
 
