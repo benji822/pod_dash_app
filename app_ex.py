@@ -98,9 +98,13 @@ default_breakdown_pie_df["total_seconds"] = default_breakdown_pie_df["wc1"].dt.t
 # downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
 downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
 
+make_float = lambda x: "{:,.2f}%".format(x*100)
 
 output_data_table_df = output_df[output_lines_name[0]][0].loc[date_str_arr[0]].copy()
 output_data_table_df.reset_index(inplace=True)
+output_data_table_df['NGRate'] = output_data_table_df['NGRate'].apply(make_float)
+output_data_table_df['Yield'] = output_data_table_df['Yield'].apply(make_float)
+output_data_table_df['YieldWithoutSample'] = output_data_table_df['YieldWithoutSample'].apply(make_float)
 output_data_table_df = output_data_table_df.rename(columns = {'index':'new column name'})
 
 downtime_data_table_df = default_breakdown_pie_df.copy()
@@ -241,6 +245,9 @@ def update_output_graph(data_date, data_line, data_workcell):
     # Update output data table
     output_data_table_df = output_df[data_line][data_workcell].loc[data_date].copy()
     output_data_table_df.reset_index(inplace=True)
+    output_data_table_df['NGRate'] = output_data_table_df['NGRate'].apply(make_float)
+    output_data_table_df['Yield'] = output_data_table_df['Yield'].apply(make_float)
+    output_data_table_df['YieldWithoutSample'] = output_data_table_df['YieldWithoutSample'].apply(make_float)
     output_data_table_df = output_data_table_df.rename(columns = {'index':'new column name'})
 
     # Upddate pie chart
