@@ -26,10 +26,12 @@ colors = {
 # see https://plotly.com/python/px-arguments/ for more options
 output_files_name = [y for x in os.walk('./data/output') for y in glob(os.path.join(x[0], '*.xlsx'))]
 downtime_files_name = [y for x in os.walk('./data/downtime') for y in glob(os.path.join(x[0], '*.xlsx'))]
+alarm_files_name = [y for x in os.walk('./data/alarm') for y in glob(os.path.join(x[0], '*.xlsx'))]
 
 output_lines_name = [re.search('L.{1}', name).group(0) for name in output_files_name]
 downtime_lines_name = [re.search('L.{1}', name).group(0) for name in downtime_files_name]
-
+alarm_lines_name = [re.search('L.{1}', name).group(0) for name in alarm_files_name]
+print(output_lines_name)
 # Get output data from excel file
 output_df = {}
 for x in output_files_name:
@@ -51,6 +53,19 @@ for x in downtime_files_name:
     downtime_line_name = re.search('L.{1}', x).group(0)
     downtime_df[downtime_line_name] = arr
 
+
+# Get alarm data from excel file
+alarm_df = {}
+for x in alarm_files_name:
+    xl = pd.ExcelFile(x)
+    res = len(xl.sheet_names)
+    date_dict = {}
+    for y in range(res):
+        temp = pd.read_excel(x, sheet_name=y)
+        date = temp["Date"][0]
+        date_dict[date] = temp.drop(["Unnamed: 0"], axis=1)
+    alarm_line_name = re.search('L.{1}', x).group(0)
+    alarm_df[alarm_line_name] = date_dict
 
 # Format the downtime data for plot
 downtime_date_dict = {}
@@ -74,13 +89,14 @@ for l in downtime_lines_name:
 
             else:
                 sub_temp["downtime"] = temp_df
-        temp[d.strftime("%m/%d/%Y")] = sub_temp
+        temp[d.strftime("%Y-%m-%d")] = sub_temp
     downtime_date_dict[l] = temp
 
 
 date_arr = list(set([x.date() for x in output_df[output_lines_name[0]][0].index]))
 date_arr.sort()
-date_str_arr = [d.strftime("%m/%d/%Y")  for d in date_arr]
+date_str_arr = [d.strftime("%Y-%m-%d")  for d in date_arr]
+# alarn_date_str = [d.strftime("%m/%d/%Y")  for d in date_arr]
 
 
 # Setup default data for figure
@@ -91,12 +107,14 @@ default_hourly_downtime_df = downtime_date_dict[downtime_lines_name[0]][date_str
 default_breakdown_pie_df = pd.DataFrame(default_downtime_breakdown_df)
 default_breakdown_pie_df['wc1'] = pd.to_timedelta(default_breakdown_pie_df["wc1"])
 default_breakdown_pie_df["total_seconds"] = default_breakdown_pie_df["wc1"].dt.total_seconds()
+default_alarm_df = alarm_df[alarm_lines_name[0]][date_str_arr[0]]
 
 
 # Create figure for the data
 # output_fig = px.bar(default_output_df, y="HourlyOutput", text='HourlyOutput')
 # downtime_fig = px.line(default_hourly_downtime_df, x=default_hourly_downtime_df.index, y='Total_minutes')
 downtime_fig_pie = px.pie(default_breakdown_pie_df, values='total_seconds', names=default_breakdown_pie_df.index)
+alarm_fig = px.bar(default_alarm_df[default_alarm_df["WORKCELL"] == 1], y='count', color="alarm_code", text="alarm_code")
 
 make_float = lambda x: "{:,.2f}%".format(x*100)
 
@@ -112,6 +130,8 @@ downtime_data_table_df = default_breakdown_pie_df.rename({'wc1': 'total_time'}, 
 downtime_data_table_df['total_time'] = downtime_data_table_df['total_time'].astype(str)
 downtime_data_table_df.reset_index(inplace=True)
 downtime_data_table_df = downtime_data_table_df.rename(columns = {'index':'new column name'})
+
+alarm_data_table_df = alarm_df[alarm_lines_name[0]][date_str_arr[0]][alarm_df[alarm_lines_name[0]][date_str_arr[0]]["WORKCELL"] == 1].copy()
 
 
 # Create figure with output and downtime
@@ -219,10 +239,19 @@ app.layout = html.Div(children=[
         columns=[{"name": i, "id": i} for i in downtime_data_table_df.columns],
         data=downtime_data_table_df.to_dict('records'),
     ),
-
     dcc.Graph(
         id='downtime_breakdown',
         figure=downtime_fig_pie
+    ),
+
+    dcc.Graph(
+        id='alarm',
+        figure=alarm_fig
+    ),
+    dash_table.DataTable(
+        id='alarm_data_table',
+        columns=[{"name": i, "id": i} for i in alarm_data_table_df.columns],
+        data=alarm_data_table_df.to_dict('records'),
     ),
 
 ])
@@ -232,6 +261,8 @@ app.layout = html.Div(children=[
     Output(component_id='data_table', component_property='data'),
     Output(component_id='downtime_breakdown', component_property='figure'),
     Output(component_id='downtime_table', component_property='data'),
+    Output(component_id='alarm', component_property='figure'),
+    Output(component_id='alarm_data_table', component_property='data'),
     Input(component_id='data_date', component_property='value'),
     Input(component_id='data_line', component_property='value'),
     Input(component_id='data_workcell', component_property='value')
@@ -241,7 +272,7 @@ def update_output_graph(data_date, data_line, data_workcell):
 
     # Update Hourly output bar chart
     # output_fig = px.bar(output_df[data_line][data_workcell].loc[data_date], y="HourlyOutput", text='HourlyOutput')
-    
+
     # Update output data table
     output_data_table_df = output_df[data_line][data_workcell].loc[data_date].copy()
     output_data_table_df.reset_index(inplace=True)
@@ -293,8 +324,13 @@ def update_output_graph(data_date, data_line, data_workcell):
     mul_fig.update_yaxes(title_text="<b>Output</b>", secondary_y=False)
     mul_fig.update_yaxes(title_text="<b>Downtime</b> in minutes", secondary_y=True)
 
+    # Update alarm figure and data table
+    alarm_update_data = alarm_df[data_line][data_date][alarm_df[data_line][data_date]["WORKCELL"] == data_workcell + 1].copy()
+    print(alarm_update_data)
+    alarm_fig = px.bar(alarm_update_data, y='count', color="alarm_code", text="alarm_code")
 
-    return mul_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records')
+
+    return mul_fig, output_data_table_df.to_dict('records'), downtime_fig_pie, downtime_data_table_df.to_dict('records'), alarm_fig, alarm_update_data.to_dict('records')
 
 if __name__ == '__main__':
     # app.run_server(debug=True)
